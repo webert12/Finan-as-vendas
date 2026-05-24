@@ -6,10 +6,31 @@ from datetime import datetime
 st.set_page_config(page_title="ShopControl - Gestão & Monitoramento", layout="wide", page_icon="🛍️")
 
 # --- INICIALIZAÇÃO DO BANCO DE DADOS EM MEMÓRIA ---
+# Adicionado estoque inicial padrão com roupas, calçados e brinquedos
 if 'produtos' not in st.session_state:
-    st.session_state.produtos = pd.DataFrame(columns=['ID', 'Nome', 'Categoria', 'Preço Venda', 'Estoque Atual'])
+    estoque_inicial = [
+        [1, 'Camisa Polo Básica', 'Roupas', 59.90, 20],
+        [2, 'Calça Jeans Casual', 'Roupas', 119.90, 15],
+        [3, 'Blusa de Frio Moletom', 'Roupas', 89.90, 10],
+        [4, 'Tênis Esportivo Running', 'Calçados', 189.90, 8],
+        [5, 'Sapato Social Couro', 'Calçados', 220.00, 5],
+        [6, 'Carrinho de Controle Remoto', 'Brinquedos', 75.00, 12],
+        [7, 'Boneca Articulada', 'Brinquedos', 49.90, 18]
+    ]
+    st.session_state.produtos = pd.DataFrame(
+        estoque_inicial, 
+        columns=['ID', 'Nome', 'Categoria', 'Preço Venda', 'Estoque Atual']
+    )
+
 if 'clientes' not in st.session_state:
-    st.session_state.clientes = {}
+    # Já deixei a Amanda criada como exemplo no sistema para você ver como fica!
+    st.session_state.clientes = {
+        'Amanda': {
+            'compras': [{'data': '24/05/2026', 'itens': ['1x Calça Jeans Casual', '1x Blusa de Frio Moletom'], 'Total': 209.80}],
+            'pagamentos': [{'data': '24/05/2026 às 14:30', 'valor': 50.00}]
+        }
+    }
+
 if 'vendas' not in st.session_state:
     st.session_state.vendas = pd.DataFrame(columns=['Data', 'Cliente', 'Produtos', 'Total', 'Status'])
 
@@ -44,7 +65,7 @@ if menu == "📊 Dashboard":
     col2.metric("Total Recebido (Caixa)", f"R$ {total_recebido:,.2f}", delta_color="normal")
     col3.metric("Total em Aberto (Dívidas)", f"R$ {total_a_receber:,.2f}", delta="- Devedores")
     
-    st.markdown("### 📦 Visão Geral do Estoque")
+    st.markdown("### 📦 Visão Geral do Estoque Atual")
     if not st.session_state.produtos.empty:
         st.dataframe(st.session_state.produtos, use_container_width=True)
     else:
@@ -59,7 +80,7 @@ elif menu == "📦 Gestão de Estoque":
     with aba_unitario:
         with st.form("form_produto"):
             col1, col2 = st.columns(2)
-            nome_prod = col1.text_input("Nome do Produto (Ex: Calça Jeans Levis)")
+            nome_prod = col1.text_input("Nome do Produto (Ex: Vestido Florido)")
             categoria = col2.selectbox("Categoria", ["Roupas", "Calçados", "Brinquedos"], key="cat_unitario")
             
             col3, col4 = st.columns(2)
@@ -76,7 +97,7 @@ elif menu == "📦 Gestão de Estoque":
     with aba_massa:
         st.markdown("""
         **Como usar:** Cole sua lista abaixo separando as informações por vírgula. Siga exatamente este modelo:
-        ```text
+```text
         Calça Moletom, Roupas, 89.90, 15
         Tênis Corrida, Calçados, 199.00, 8
         Boneca de Pano, Brinquedos, 45.00, 20
@@ -90,7 +111,7 @@ elif menu == "📦 Gestão de Estoque":
                 sucessos = 0
                 erros = 0
                 
-                for linha in linhas:
+                for linha in hashtags:
                     try:
                         partes = [p.strip() for p in linha.split(",")]
                         if len(partes) == 4:
@@ -113,16 +134,26 @@ elif menu == "📦 Gestão de Estoque":
                 if sucessos > 0:
                     st.rerun()
 
-# ================= RECURSO 3: REGISTRAR VENDA =================
+# ================= RECURSO 3: REGISTRAR VENDA (CADASTRO DIRETO) =================
 elif menu == "🛒 Registrar Venda":
-    st.subheader("Nova Venda (Saída de Estoque)")
+    st.subheader("Venda Direta e Cadastro de Cliente")
     
     if st.session_state.produtos.empty:
         st.warning("Cadastre produtos no estoque antes de realizar uma venda.")
     else:
-        nome_cliente = st.text_input("Nome do Cliente").strip()
+        # Aqui o lojista digita ou escolhe um cliente existente
+        clientes_existentes = list(st.session_state.clientes.keys())
         
-        # Seleção de múltiplos produtos
+        col_c1, col_c2 = st.columns([2, 1])
+        nome_cliente = col_c1.text_input("Nome do Cliente (Se não existir, será cadastrado na hora)").strip()
+        
+        if clientes_existentes:
+            col_c2.markdown("<br>", unsafe_allow_html=True) # Alinhamento visual
+            st.info(f"Clientes já cadastrados: {', '.join(clientes_existentes)}")
+
+        st.markdown("---")
+        
+        # Seleção de múltiplos produtos do estoque padrão
         produtos_disponiveis = st.session_state.produtos['Nome'].tolist()
         produtos_selecionados = st.multiselect("Selecione os produtos comprados", produtos_disponiveis)
         
@@ -130,7 +161,7 @@ elif menu == "🛒 Registrar Venda":
         total_venda = 0.0
         
         if produtos_selecionados:
-            st.markdown("#### Quantidades:")
+            st.markdown("#### Ajuste as Quantidades:")
             for prod in produtos_selecionados:
                 estoque_max = int(st.session_state.produtos.loc[st.session_state.produtos['Nome'] == prod, 'Estoque Atual'].values[0])
                 preco_un = float(st.session_state.produtos.loc[st.session_state.produtos['Nome'] == prod, 'Preço Venda'].values[0])
@@ -138,28 +169,29 @@ elif menu == "🛒 Registrar Venda":
                 if estoque_max <= 0:
                     st.error(f"Produto '{prod}' está sem estoque disponível!")
                     continue
-                    
-                qtd = st.number_input(f"Qtd para: {prod} (Disp: {estoque_max})", min_value=1, max_value=estoque_max, key=f"qtd_{prod}")
+                
+                # Input de quantidade que você pediu
+                qtd = st.number_input(f"{prod} (R$ {preco_un:.2f} cada | Disp: {estoque_max})", min_value=1, max_value=estoque_max, key=f"qtd_{prod}")
                 carrinho[prod] = {'qtd': qtd, 'preco': preco_un}
                 total_venda += (preco_un * qtd)
             
             st.markdown(f"### **Total da Compra: R$ {total_venda:,.2f}**")
             
-            if st.button("Finalizar Venda e Gerar Parcelamento/Dívida"):
+            if st.button("Finalizar Venda e Registrar"):
                 if not nome_cliente:
-                    st.error("Por favor, digite o nome do cliente.")
+                    st.error("Por favor, digite o nome do cliente para prosseguir.")
                 elif not carrinho:
-                    st.error("Carrinho vazio ou produtos sem estoque.")
+                    st.error("Selecione produtos válidos e com estoque disponível.")
                 else:
-                    # Dar baixa no estoque
+                    # Dar baixa automática no estoque
                     for prod, info in carrinho.items():
                         st.session_state.produtos.loc[st.session_state.produtos['Nome'] == prod, 'Estoque Atual'] -= info['qtd']
                     
-                    # Cadastrar cliente se não existir
+                    # Criação automática do cliente no sistema se ele for novo
                     if nome_cliente not in st.session_state.clientes:
                         st.session_state.clientes[nome_cliente] = {'compras': [], 'pagamentos': []}
                     
-                    # Registrar a compra no histórico do cliente
+                    # Registrar a compra no histórico
                     data_atual = datetime.now().strftime("%d/%m/%Y")
                     st.session_state.clientes[nome_cliente]['compras'].append({
                         'data': data_atual,
@@ -167,7 +199,7 @@ elif menu == "🛒 Registrar Venda":
                         'Total': total_venda
                     })
                     
-                    st.success(f"Venda registrada com sucesso para {nome_cliente}!")
+                    st.success(f"Sucesso! Cliente '{nome_cliente}' registrado e compra computada!")
                     st.rerun()
 
 # ================= RECURSO 4: CLIENTES & CREDIÁRIO =================
@@ -177,7 +209,6 @@ elif menu == "👥 Clientes & Crediário":
     if not st.session_state.clientes:
         st.info("Nenhuma venda realizada até o momento.")
     else:
-        # ---- NOVA TABELA GERAL PEDIDA ----
         st.markdown("### 📋 Painel Geral de Clientes (Controle de Dívidas e Valores Pagos)")
         lista_geral_clientes = []
         for nome, dados in st.session_state.clientes.items():
@@ -194,7 +225,6 @@ elif menu == "👥 Clientes & Crediário":
         st.dataframe(df_geral_clientes, use_container_width=True)
         st.markdown("---")
         
-        # Gestão Individual
         st.markdown("### 🔍 Gerenciamento Individual")
         cliente_sel = st.selectbox("Selecione o Cliente para detalhar ou dar baixa", list(st.session_state.clientes.keys()))
         
