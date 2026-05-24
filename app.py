@@ -17,11 +17,11 @@ if 'vendas' not in st.session_state:
 def adicionar_produto(nome, categoria, preco, qtd):
     df = st.session_state.produtos
     if nome in df['Nome'].values:
-        df.loc[df['Nome'] == nome, 'Estoque Atual'] += qtd
+        st.session_state.produtos.loc[st.session_state.produtos['Nome'] == nome, 'Estoque Atual'] += qtd
     else:
         novo_id = len(df) + 1
         novo_prod = pd.DataFrame([[novo_id, nome, categoria, preco, qtd]], columns=df.columns)
-        st.session_state.produtos = pd.concat([df, novo_prod], ignore_index=True)
+        st.session_state.produtos = pd.concat([st.session_state.produtos, novo_prod], ignore_index=True)
 
 # --- interface principal ---
 st.title("🛍️ ShopControl - Sistema de Monitoramento de Vendas")
@@ -54,21 +54,64 @@ if menu == "📊 Dashboard":
 elif menu == "📦 Gestão de Estoque":
     st.subheader("Controle de Entradas (Compras) de Produtos")
     
-    with st.form("form_produto"):
-        col1, col2 = st.columns(2)
-        nome_prod = col1.text_input("Nome do Produto (Ex: Calça Jeans Levis)")
-        categoria = col2.selectbox("Categoria", ["Roupas", "Calçados", "Brinquedos"])
+    aba_unitario, aba_massa = st.tabs(["🆕 Adicionar Um por Um", "📋 Colar Lista (Carga em Massa)"])
+    
+    with aba_unitario:
+        with st.form("form_produto"):
+            col1, col2 = st.columns(2)
+            nome_prod = col1.text_input("Nome do Produto (Ex: Calça Jeans Levis)")
+            categoria = col2.selectbox("Categoria", ["Roupas", "Calçados", "Brinquedos"], key="cat_unitario")
+            
+            col3, col4 = st.columns(2)
+            preco_venda = col3.number_input("Preço de Venda (R$)", min_value=0.0, step=1.0, key="preco_unitario")
+            qtd_entrada = col4.number_input("Quantidade Comprada (Entrada)", min_value=1, step=1, key="qtd_unitario")
+            
+            btn_produto = st.form_submit_button("Cadastrar / Adicionar Estoque")
+            
+        if btn_produto and nome_prod:
+            adicionar_produto(nome_prod, categoria, preco_venda, qtd_entrada)
+            st.success(f"Estoque atualizado: +{qtd_entrada} unidades de '{nome_prod}'!")
+            st.rerun()
+            
+    with aba_massa:
+        st.markdown("""
+        **Como usar:** Cole sua lista abaixo separando as informações por vírgula. Siga exatamente este modelo:
+        ```text
+        Calça Moletom, Roupas, 89.90, 15
+        Tênis Corrida, Calçados, 199.00, 8
+        Boneca de Pano, Brinquedos, 45.00, 20
+        ```
+        """)
+        texto_colado = st.text_area("Cole as linhas do seu estoque aqui:", height=200, placeholder="Nome, Categoria, Preço, Quantidade")
         
-        col3, col4 = st.columns(2)
-        preco_venda = col3.number_input("Preço de Venda (R$)", min_value=0.0, step=1.0)
-        qtd_entrada = col4.number_input("Quantidade Comprada (Entrada)", min_value=1, step=1)
-        
-        btn_produto = st.form_submit_button("Cadastrar / Adicionar Estoque")
-        
-    if btn_produto and nome_prod:
-        adicionar_produto(nome_prod, categoria, preco_venda, qtd_entrada)
-        st.success(f"Estoque atualizado: +{qtd_entrada} unidades de '{nome_prod}'!")
-        st.rerun()
+        if st.button("Processar e Salvar Lista"):
+            if texto_colado.strip():
+                linhas = texto_colado.strip().split("\n")
+                sucessos = 0
+                erros = 0
+                
+                for linha in linhas:
+                    try:
+                        partes = [p.strip() for p in linha.split(",")]
+                        if len(partes) == 4:
+                            nome = partes[0]
+                            cat = partes[1] if partes[1] in ["Roupas", "Calçados", "Brinquedos"] else "Roupas"
+                            preco = float(partes[2])
+                            qtd = int(partes[3])
+                            
+                            adicionar_produto(nome, cat, preco, qtd)
+                            sucessos += 1
+                        else:
+                            erros += 1
+                    except Exception:
+                        erros += 1
+                
+                if sucessos > 0:
+                    st.success(f"Sucesso! {sucessos} produtos foram adicionados/atualizados no estoque.")
+                if erros > 0:
+                    st.error(f"Aviso: {erros} linhas estavam fora do padrão e foram puladas.")
+                if sucessos > 0:
+                    st.rerun()
 
 # ================= RECURSO 3: REGISTRAR VENDA =================
 elif menu == "🛒 Registrar Venda":
@@ -134,24 +177,38 @@ elif menu == "👥 Clientes & Crediário":
     if not st.session_state.clientes:
         st.info("Nenhuma venda realizada até o momento.")
     else:
-        cliente_sel = st.selectbox("Selecione o Cliente para Gerenciar", list(st.session_state.clientes.keys()))
+        # ---- NOVA TABELA GERAL PEDIDA ----
+        st.markdown("### 📋 Painel Geral de Clientes (Controle de Dívidas e Valores Pagos)")
+        lista_geral_clientes = []
+        for nome, dados in st.session_state.clientes.items():
+            total_comprado = sum(c['Total'] for c in dados['compras'])
+            total_pago = sum(p['valor'] for p in dados['pagamentos'])
+            saldo_devedor = total_comprado - total_pago
+            lista_geral_clientes.append({
+                "Nome do Cliente": nome,
+                "Total Comprado (R$)": total_comprado,
+                "Total Pago (R$)": total_pago,
+                "Saldo Devedor (R$)": saldo_devedor
+            })
+        df_geral_clientes = pd.DataFrame(lista_geral_clientes)
+        st.dataframe(df_geral_clientes, use_container_width=True)
+        st.markdown("---")
+        
+        # Gestão Individual
+        st.markdown("### 🔍 Gerenciamento Individual")
+        cliente_sel = st.selectbox("Selecione o Cliente para detalhar ou dar baixa", list(st.session_state.clientes.keys()))
         
         dados_cliente = st.session_state.clientes[cliente_sel]
         
-        # Calcular totais do cliente
         total_comprado = sum(c['Total'] for c in dados_cliente['compras'])
         total_pago = sum(p['valor'] for p in dados_cliente['pagamentos'])
         saldo_devedor = total_comprado - total_pago
         
-        # Layout de cartões de informação do cliente
         c1, c2, c3 = st.columns(3)
         c1.metric("Total Comprado", f"R$ {total_comprado:,.2f}")
         c2.metric("Total Pago", f"R$ {total_pago:,.2f}", delta_color="inverse")
         c3.metric("Saldo Devedor Atual", f"R$ {saldo_devedor:,.2f}", delta="- Restante")
         
-        st.markdown("---")
-        
-        # Bloco de abatimento (O que você pediu: Voltar e colocar o valor que ela pagou)
         st.markdown("### 💰 Registrar Pagamento / Abatimento")
         if saldo_devedor > 0:
             with st.form("form_pagamento"):
@@ -169,7 +226,6 @@ elif menu == "👥 Clientes & Crediário":
         else:
             st.success("🎉 Este cliente está com as contas em dia!")
             
-        # Históricos detalhados em abas
         aba1, aba2 = st.tabs(["📋 Extrato de Compras (Saídas)", "💵 Histórico de Pagamentos (Entradas)"])
         
         with aba1:
