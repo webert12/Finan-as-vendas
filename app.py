@@ -162,32 +162,32 @@ else:
     
     col_alt1, col_alt2 = st.columns(2)
     
-    with col_alt1:
-        with st.container(border=True):
-            st.markdown("##### ➕ Entrada / Ajuste Positivo")
-            qtd_mais = st.number_input("Adicionar quantas unidades ao estoque?", min_value=0, step=1, value=0, key="add_qtd_mais")
-            novo_preco = st.number_input("Alterar preço de venda para: (R$)", min_value=0.0, value=preco_atual, step=5.0, key="up_novo_preco")
-            
-            if st.button("Salvar Alterações de Estoque/Preço"):
-                if qtd_mais > 0 or novo_preco != preco_atual:
-                    st.session_state.produtos.loc[st.session_state.produtos['Nome'] == prod_selecionado, 'Estoque Atual'] += qtd_mais
-                    st.session_state.produtos.loc[st.session_state.produtos['Nome'] == prod_selecionado, 'Preço Venda'] = novo_preco
-                    st.success(f"Ajuste realizado! {prod_selecionado} agora tem {estoque_atual + qtd_mais} unidades.")
-                    st.rerun()
+    # Caixa da esquerda: Ajuste de estoque
+    container_positivo = col_alt1.container(border=True)
+    container_positivo.markdown("##### ➕ Entrada / Ajuste Positivo")
+    qtd_mais = container_positivo.number_input("Adicionar quantas unidades ao estoque?", min_value=0, step=1, value=0, key="add_qtd_mais")
+    novo_preco = container_positivo.number_input("Alterar preço de venda para: (R$)", min_value=0.0, value=preco_atual, step=5.0, key="up_novo_preco")
     
-    with col_alt2:
-        with st.container(border=True):
-            st.markdown("##### ❌ Exclusão de Mercadoria")
-            st.write("Deseja retirar esse item permanentemente?")
-            confirmar_exclusao = st.checkbox("Sim, quero apagar este produto.")
-            
-            if st.button("Remover Produto do Sistema", type="primary"):
-                if confirmar_exclusao:
-                    st.session_state.produtos = st.session_state.produtos[st.session_state.produtos['Nome'] != prod_selecionado]
-                    st.success(f"O produto '{prod_selecionado}' foi deletado.")
-                    st.rerun()
-                else:
-                    st.error("Marque a caixa de confirmação para prosseguir.")
+    if container_positivo.button("Salvar Alterações de Estoque/Preço"):
+        if qtd_mais > 0 or novo_preco != preco_atual:
+            st.session_state.produtos.loc[st.session_state.produtos['Nome'] == prod_selecionado, 'Estoque Atual'] += qtd_mais
+            st.session_state.produtos.loc[st.session_state.produtos['Nome'] == prod_selecionado, 'Preço Venda'] = novo_preco
+            st.success(f"Ajuste realizado! {prod_selecionado} agora tem {estoque_atual + qtd_mais} unidades.")
+            st.rerun()
+    
+    # Caixa da direita: Exclusão de itens
+    container_negativo = col_alt2.container(border=True)
+    container_negativo.markdown("##### ❌ Exclusão de Mercadoria")
+    container_negativo.write("Deseja retirar esse item permanentemente?")
+    confirmar_exclusao = container_negativo.checkbox("Sim, quero apagar este produto.")
+    
+    if container_negativo.button("Remover Produto do Sistema", type="primary"):
+        if confirmar_exclusao:
+            st.session_state.produtos = st.session_state.produtos[st.session_state.produtos['Nome'] != prod_selecionado]
+            st.success(f"O produto '{prod_selecionado}' foi deletado.")
+            st.rerun()
+        else:
+            st.error("Marque a caixa de confirmação para prosseguir.")
 
 # ================= RECURSO 3: REGISTRAR VENDA =================
 elif menu == "🛒 Registrar Venda":
@@ -240,7 +240,6 @@ if produtos_selecionados:
             if nome_cliente not in st.session_state.clientes:
                 st.session_state.clientes[nome_cliente] = {'compras': [], 'pagamentos': []}
             
-            # Alterado para pegar a data correta de Brasília
             data_atual = obter_data_hora_brasilia().strftime("%d/%m/%Y")
             st.session_state.clientes[nome_cliente]['compras'].append({
                 'data': data_atual,
@@ -306,7 +305,6 @@ with st.container(border=True):
             btn_pagar = st.form_submit_button("Confirmar e Dar Desconto na Dívida")
             
             if btn_pagar:
-                # Alterado para pegar o horário exato de Brasília (Hora e Minuto)
                 data_pagto = obter_data_hora_brasilia().strftime("%d/%m/%Y às %H:%M")
                 dados_cliente['pagamentos'].append({
                     'data': data_pagto,
