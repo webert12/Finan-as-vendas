@@ -265,6 +265,33 @@ elif menu == "👥 Clientes & Crediário":
     if not st.session_state.clientes:
         st.info("Nenhuma movimentação de clientes registrada.")
     else:
+        # Inicializa o estado de controle do painel se não existir
+        if 'mostrar_painel_geral' not in st.session_state:
+            st.session_state.mostrar_painel_geral = False
+
+        # Botão alternável para abrir/fechar o Painel Geral
+        if st.button("📋 Ver Painel Geral de Contas", type="secondary"):
+            st.session_state.mostrar_painel_geral = not st.session_state.mostrar_painel_geral
+
+        # Exibe os dados gerais de todos os clientes se o botão for acionado
+        if st.session_state.mostrar_painel_geral:
+            st.markdown("#### 📑 Resumo Geral de Débitos")
+            dados_gerais = []
+            for nome, info in st.session_state.clientes.items():
+                t_comprado = sum(c['Total'] for c in info['compras'])
+                t_pago = sum(p['valor'] for p in info['pagamentos'])
+                s_devedor = t_comprado - t_pago
+                dados_gerais.append({
+                    "👤 Cliente": nome,
+                    "💰 Total Comprado": f"R$ {t_comprado:,.2f}",
+                    "💵 Total Pago": f"R$ {t_pago:,.2f}",
+                    "🚨 Dívida Restante": f"R$ {s_devedor:,.2f}"
+                })
+            df_geral = pd.DataFrame(dados_gerais)
+            st.dataframe(df_geral, use_container_width=True, hide_index=True)
+            st.markdown("---")
+
+        # Ficha individual (O resto do sistema permanece limpo)
         st.markdown("### 🔍 Ficha e Histórico Individual")
         cliente_sel = st.selectbox("Selecione o cliente para gerenciar:", list(st.session_state.clientes.keys()))
         
