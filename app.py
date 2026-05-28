@@ -121,7 +121,7 @@ elif menu == "📦 Gestão de Estoque":
             btn_produto = st.form_submit_button("Cadastrar / Adicionar Estoque") 
             if btn_produto and nome_prod: 
                 adicionar_produto(nome_prod, categoria, preco_venda, qtd_entrada) 
-                st.success(f"Estoque updated: +{qtd_entrada} unidades de '{nome_prod}'!") 
+                st.success(f"Estoque atualizado: +{qtd_entrada} unidades de '{nome_prod}'!") 
                 st.rerun() 
     with aba_massa: 
         st.markdown(""" **Modelo exigido:** `Nome, Categoria, Preço, Quantidade` ```text Calça Moletom, Roupas, 89.90, 15 Tênis Corrida, Calçados, 199.00, 8 ``` """) 
@@ -197,7 +197,7 @@ elif menu == "🛒 Registrar Venda":
             with st.container(border=True): 
                 nome_cliente = st.text_input("👤 Nome do Cliente (Se for novo, cadastraremos ao finalizar)").strip() 
                 if clientes_existentes: 
-                    st.caption(f"**Clientes ativos no system:** {', '.join(clientes_existentes)}") 
+                    st.caption(f"**Clientes ativos no sistema:** {', '.join(clientes_existentes)}") 
                 st.markdown("<br>", unsafe_allow_html=True) 
                 produtos_disponiveis = st.session_state.produtos['Nome'].tolist() 
                 produtos_selecionados = st.multiselect("🛍️ Selecione as mercadorias vendidas", produtos_disponiveis) 
@@ -242,9 +242,7 @@ elif menu == "👥 Clientes & Crediário":
     if not st.session_state.clientes: 
         st.info("Nenhuma movimentação de clientes registrada.") 
     else: 
-        # NOTA: O bloco antigo do 'Painel Geral de Contas' foi totalmente deletado daqui conforme solicitado.
-        
-        # Ficha individual 
+        # Ficha individual (O antigo Painel Geral foi totalmente removido daqui, mantendo o restante funcionando normalmente)
         st.markdown("### 🔍 Ficha e Histórico Individual") 
         cliente_sel = st.selectbox("Selecione o cliente para gerenciar:", list(st.session_state.clientes.keys())) 
         dados_cliente = st.session_state.clientes[cliente_sel] 
