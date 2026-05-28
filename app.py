@@ -4,21 +4,30 @@ from datetime import datetime
 import pytz # Biblioteca profissional para controle de fuso horário
 
 # Configuração da página profissional
-
 st.set_page_config(
-page_title="Ademir Trovão Azul - Gestão & Monitoramento",
-layout="wide",
-page_icon="⚡"
+    page_title="Ademir Trovão Azul - Gestão & Monitoramento",
+    layout="wide",
+    page_icon="⚡"
 )
 
-# --- CONFIGURAÇÃO DO HORÁRIO DE BRASÍLIA ---
+# Injeção de CSS para ocultar menus nativos indesejados e limpar a interface externa
+st.markdown("""
+    <style>
+    #MainMenu {visibility: hidden;}
+    footer {visibility: hidden;}
+    header {visibility: hidden;}
+    .stDeployButton {display:none !important;}
+    footer {display: none !important;}
+    #stDecoration {display:none !important;}
+    </style>
+    """, unsafe_allow_html=True)
 
+# --- CONFIGURAÇÃO DO HORÁRIO DE BRASÍLIA ---
 def obter_data_hora_brasilia():
     fuso_brasilia = pytz.timezone('America/Sao_Paulo')
     return datetime.now(fuso_brasilia)
 
 # --- INICIALIZAÇÃO DO BANCO DE DADOS EM MEMÓRIA ---
-
 if 'produtos' not in st.session_state:
     estoque_inicial = [
         [1, 'Camisa Polo Básica', 'Roupas', 59.90, 20],
@@ -46,7 +55,6 @@ if 'vendas' not in st.session_state:
     st.session_state.vendas = pd.DataFrame(columns=['Data', 'Cliente', 'Produtos', 'Total', 'Status'])
 
 # --- FUNÇÕES AUXILIARES ---
-
 def adicionar_produto(nome, categoria, preco, qtd):
     df = st.session_state.produtos
     if nome in df['Nome'].values:
@@ -57,18 +65,15 @@ def adicionar_produto(nome, categoria, preco, qtd):
         st.session_state.produtos = pd.concat([st.session_state.produtos, novo_prod], ignore_index=True)
 
 # --- INTERFACE PRINCIPAL ---
-
 st.markdown("<h1 style='text-align: center; color: #1E3A8A;'>⚡ Ademir Trovão Azul</h1>", unsafe_allow_html=True)
 st.markdown("<p style='text-align: center;'>Sistema Comercial de Monitoramento de Vendas & Estoque</p>", unsafe_allow_html=True)
 st.markdown("---") 
 
 # Menu Lateral Comercial
-
 st.sidebar.markdown("### Menu de Controle")
 menu = st.sidebar.selectbox("Escolha a tela:", ["📊 Dashboard", "📦 Gestão de Estoque", "👥 Clientes & Crediário", "🛒 Registrar Venda"]) 
 
 # ================= RECURSO 1: DASHBOARD =================
-
 if menu == "📊 Dashboard":
     st.subheader("📊 Faturamento e Saúde Financeira")
 
@@ -97,7 +102,6 @@ if menu == "📊 Dashboard":
         st.info("Nenhum produto cadastrado no estoque ainda.") 
 
 # ================= RECURSO 2: GESTÃO DE ESTOQUE =================
-
 elif menu == "📦 Gestão de Estoque":
     st.subheader("📦 Controle e Alteração de Estoque")
 
@@ -112,7 +116,7 @@ elif menu == "📦 Gestão de Estoque":
             qtd_entrada = col4.number_input("Quantidade Comprada (Entrada)", min_value=1, step=1, key="qtd_unitario") 
             btn_produto = st.form_submit_button("Cadastrar / Adicionar Estoque") 
             if btn_produto and nome_prod: 
-                adicionar_produto(nome_prod, categoria, preco_venda, qtd_entrada) 
+                adicionar_produto(nome_prod, category=categoria, preco=preco_venda, qtd=qtd_entrada) 
                 st.success(f"Estoque updated: +{qtd_entrada} unidades de '{nome_prod}'!") 
                 st.rerun() 
     with aba_massa: 
@@ -172,7 +176,6 @@ elif menu == "📦 Gestão de Estoque":
                         st.error("Marque a caixa de confirmação para prosseguir.") 
 
 # ================= RECURSO 3: REGISTRAR VENDA =================
-
 elif menu == "🛒 Registrar Venda":
     st.subheader("🛒 Venda Direta e Cadastro Automático")
 
@@ -182,7 +185,8 @@ elif menu == "🛒 Registrar Venda":
         with st.container(border=True): 
             col_b1, col_b2 = st.columns([4, 1]) 
             with col_b1: st.markdown("<p style='margin:0; font-weight:bold; color:#1E3A8A;'>Painel de Registro</p>", unsafe_allow_html=True) 
-            with col_b2: if st.button("🧹 Limpar Tela", use_container_width=True, type="secondary"): st.rerun() 
+            with col_b2: 
+                if st.button("🧹 Limpar Tela", use_container_width=True, type="secondary"): st.rerun() 
             clientes_existentes = list(st.session_state.clientes.keys()) 
             with st.container(border=True): 
                 nome_cliente = st.text_input("👤 Nome do Cliente (Se for novo, cadastraremos ao finalizar)").strip() 
@@ -226,37 +230,15 @@ elif menu == "🛒 Registrar Venda":
                             st.rerun() 
 
 # ================= RECURSO 4: CLIENTES & CREDIÁRIO =================
-
 elif menu == "👥 Clientes & Crediário":
     st.subheader("👥 Painel de Controle de Clientes e Recebimentos")
 
     if not st.session_state.clientes: 
         st.info("Nenhuma movimentação de clientes registrada.") 
     else: 
-        # Inicializa o estado de controle do painel se não existir 
-        if 'mostrar_painel_geral' not in st.session_state: 
-            st.session_state.mostrar_painel_geral = False 
-        # Botão alternável para abrir/fechar o Painel Geral 
-        if st.button("📋 Ver Painel Geral de Contas", type="secondary"): 
-            st.session_state.mostrar_painel_geral = not st.session_state.mostrar_painel_geral 
-        # Exibe os dados gerais de todos os clientes se o botão for acionado 
-        if st.session_state.mostrar_painel_geral: 
-            st.markdown("#### 📑 Resumo Geral de Débitos") 
-            dados_gerais = [] 
-            for nome, info in st.session_state.clientes.items(): 
-                t_comprado = sum(c['Total'] for c in info['compras']) 
-                t_pago = sum(p['valor'] for p in info['pagamentos']) 
-                s_devedor = t_comprado - t_pago 
-                dados_gerais.append({ 
-                    "👤 Cliente": nome, 
-                    "💰 Total Comprado": f"R$ {t_comprado:,.2f}", 
-                    "💵 Total Pago": f"R$ {t_pago:,.2f}", 
-                    "🚨 Dívida Restante": f"R$ {s_devedor:,.2f}" 
-                }) 
-            df_geral = pd.DataFrame(dados_gerais) 
-            st.dataframe(df_geral, use_container_width=True, hide_index=True) 
-            st.markdown("---") 
-        # Ficha individual 
+        # O BLOCO REMOVIDO: O painel alternável e a tabela do Resumo Geral de Débitos foram completamente extraídos daqui.
+        
+        # Ficha individual (Se torna o elemento principal ao entrar na aba)
         st.markdown("### 🔍 Ficha e Histórico Individual") 
         cliente_sel = st.selectbox("Selecione o cliente para gerenciar:", list(st.session_state.clientes.keys())) 
         dados_cliente = st.session_state.clientes[cliente_sel] 
