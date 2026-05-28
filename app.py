@@ -157,9 +157,9 @@ elif menu == "📦 Gestão de Estoque":
             if texto_colado.strip():
                 linhas = texto_colado.strip().split("\n")
                 sucessos = 0
-                for linha in linhas:
+                for inline in linhas:
                     try:
-                        partes = [p.strip() for p in linha.split(",")]
+                        partes = [p.strip() for p in inline.split(",")]
                         if len(partes) == 4:
                             nome = partes[0]
                             cat = partes[1] if partes[1] in ["Roupas", "Calçados", "Brinquedos"] else "Roupas"
@@ -290,107 +290,79 @@ elif menu == "👥 Clientes & Crediário":
     if not st.session_state.clientes:
         st.info("Nenhuma movimentação de clientes registrada.")
     else:
-        # Painel Geral de Contas visível
-        st.markdown("### 📋 Painel Geral de Contas")
-        lista_geral_clientes = []
-        for nome, dados in st.session_state.clientes.items():
-            total_comprado = sum(c['Total'] for c in dados['compras'])
-            total_pago = sum(p['valor'] for p in dados['pagamentos'])
-            saldo_devedor = total_comprado - total_pago
-            lista_geral_clientes.append({
-                "Nome do Cliente": nome,
-                "Total Comprado": total_comprado,
-                "Total Pago": total_pago,
-                "Saldo Devedor": saldo_devedor
-            })
-        df_geral_clientes = pd.DataFrame(lista_geral_clientes)
+        st.markdown("### 🔍 Ficha e Histórico Individual")
+        cliente_sel = st.selectbox("Selecione o cliente para gerenciar:", list(st.session_state.clientes.keys()))
         
-        st.data_editor(
-            df_geral_clientes,
-            column_config={
-                "Total Comprado": st.column_config.NumberColumn("Total Comprado", format="R$ %.2f"),
-                "Total Pago": st.column_config.NumberColumn("Total Já Pago", format="R$ %.2f"),
-                "Saldo Devedor": st.column_config.NumberColumn("Saldo Devedor Atual", format="R$ %.2f"),
-            },
-            disabled=True, use_container_width=True, hide_index=True
-        )
-            
-        st.markdown("---")
+        dados_cliente = st.session_state.clientes[cliente_sel]
+        total_comprado = sum(c['Total'] for c in dados_cliente['compras'])
+        total_pago = sum(p['valor'] for p in dados_cliente['pagamentos'])
+        saldo_devedor = total_comprado - total_pago
         
-        # Menu Amarelo para gerenciar o cliente selecionado
-        with st.expander("🟡 CLIQUE AQUI PARA GERENCIAR FICHA, ABATIMENTOS E HISTÓRICO INDIVIDUAL", expanded=False):
-            st.markdown("### 🔍 Ficha e Histórico Individual")
-            cliente_sel = st.selectbox("Selecione o cliente para gerenciar:", list(st.session_state.clientes.keys()))
+        c1, c2, c3 = st.columns(3)
+        c1.metric("Total Comprado", f"R$ {total_comprado:,.2f}")
+        c2.metric("Total Pago", f"R$ {total_pago:,.2f}")
+        c3.metric("Dívida Restante", f"R$ {saldo_devedor:,.2f}")
+        
+        st.markdown("<br>", unsafe_allow_html=True)
+        
+        with st.container(border=True):
+            st.markdown("#### 💰 Registrar Novo Abatimento")
+            if saldo_devedor > 0:
+                with st.form("form_pagamento"):
+                    valor_pago = st.number_input("Valor entregue pelo cliente (R$)", min_value=0.01, max_value=float(saldo_devedor), step=5.0)
+                    btn_pagar = st.form_submit_button("Confirmar e Dar Desconto na Dívida")
+                    
+                    if btn_pagar:
+                        data_pagto = obter_data_hora_brasilia().strftime("%d/%m/%Y às %H:%M")
+                        dados_cliente['pagamentos'].append({
+                            'data': data_pagto,
+                            'valor': valor_pago
+                        })
+                        st.success(f"Excelente! R$ {valor_pago:.2f} descontados da conta de {cliente_sel}!")
+                        st.rerun()
+            else:
+                st.success("🎉 Ótimo! Este cliente não possui pendências financeiras.")
             
-            dados_cliente = st.session_state.clientes[cliente_sel]
-            total_comprado = sum(c['Total'] for c in dados_cliente['compras'])
-            total_pago = sum(p['valor'] for p in dados_cliente['pagamentos'])
-            saldo_devedor = total_comprado - total_pago
-            
-            c1, c2, c3 = st.columns(3)
-            c1.metric("Total Comprado", f"R$ {total_comprado:,.2f}")
-            c2.metric("Total Pago", f"R$ {total_pago:,.2f}")
-            c3.metric("Dívida Restante", f"R$ {saldo_devedor:,.2f}")
-            
-            st.markdown("<br>", unsafe_allow_html=True)
-            
-            with st.container(border=True):
-                st.markdown("#### 💰 Registrar Novo Abatimento")
-                if saldo_devedor > 0:
-                    with st.form("form_pagamento"):
-                        valor_pago = st.number_input("Valor entregue pelo cliente (R$)", min_value=0.01, max_value=float(saldo_devedor), step=5.0)
-                        btn_pagar = st.form_submit_button("Confirmar e Dar Desconto na Dívida")
-                        
-                        if btn_pagar:
-                            data_pagto = obter_data_hora_brasilia().strftime("%d/%m/%Y às %H:%M")
-                            dados_cliente['pagamentos'].append({
-                                'data': data_pagto,
-                                'valor': valor_pago
-                            })
-                            st.success(f"Excelente! R$ {valor_pago:.2f} descontados da conta de {cliente_sel}!")
-                            st.rerun()
-                else:
-                    st.success("🎉 Ótimo! Este cliente não possui pendências financeiras.")
+        st.markdown("### 📋 Histórico Detalhado & Remoções")
+        
+        # Histórico de Saídas Oculto
+        with st.expander("📋 Clique aqui para abrir - Histórico de Saídas (O que comprou)", expanded=False):
+            if dados_cliente['compras']:
+                df_compras = pd.DataFrame(dados_cliente['compras'])
+                st.dataframe(
+                    df_compras,
+                    column_config={"Total": st.column_config.NumberColumn("Valor Total", format="R$ %.2f")},
+                    use_container_width=True, hide_index=True
+                )
                 
-            st.markdown("### 📋 Histórico Detalhado & Remoções")
-            
-            # [CORREÇÃO CRÍTICA] - Substituição das st.tabs por st.expanders individuais para ocultar as tabelas
-            with st.expander("📋 Clique aqui para abrir - Histórico de Saídas (O que comprou)", expanded=False):
-                if dados_cliente['compras']:
-                    df_compras = pd.DataFrame(dados_cliente['compras'])
-                    st.dataframe(
-                        df_compras,
-                        column_config={"Total": st.column_config.NumberColumn("Valor Total", format="R$ %.2f")},
-                        use_container_width=True, hide_index=True
-                    )
-                    
-                    with st.expander("❌ Remover Compra do Histórico"):
-                        opcoes_compras = [f"{i} - Data: {c['data']} | Total: R${c['Total']:.2f}" for i, c in enumerate(dados_cliente['compras'])]
-                        compra_remover = st.selectbox("Escolha a compra para excluir:", opcoes_compras, key="del_compra_sel")
-                        if st.button("Excluir Registro de Compra Selecionado", type="primary"):
-                            idx = int(compra_remover.split(" - ")[0])
-                            dados_cliente['compras'].pop(idx)
-                            st.success("Compra removida do histórico com sucesso!")
-                            st.rerun()
-                else:
-                    st.write("Sem registros de compras.")
-                    
-            with st.expander("💵 Clique aqui para abrir - Histórico de Entradas (Pagamentos feitos)", expanded=False):
-                if dados_cliente['pagamentos']:
-                    df_pagos = pd.DataFrame(dados_cliente['pagamentos'])
-                    st.dataframe(
-                        df_pagos,
-                        column_config={"valor": st.column_config.NumberColumn("Valor Pago", format="R$ %.2f")},
-                        use_container_width=True, hide_index=True
-                    )
-                    
-                    with st.expander("❌ Remover Pagamento do Histórico"):
-                        opcoes_pagos = [f"{i} - Data: {p['data']} | Valor: R${p['valor']:.2f}" for i, p in enumerate(dados_cliente['pagamentos'])]
-                        pago_remover = st.selectbox("Escolha o pagamento para excluir:", opcoes_pagos, key="del_pago_sel")
-                        if st.button("Excluir Registro de Pagamento Selecionado", type="primary"):
-                            idx = int(pago_remover.split(" - ")[0])
-                            dados_cliente['pagamentos'].pop(idx)
-                            st.success("Pagamento removido do histórico com sucesso!")
-                            st.rerun()
-                else:
-                    st.write("Nenhum pagamento registrado.")
+                with st.expander("❌ Remover Compra do Histórico"):
+                    opcoes_compras = [f"{i} - Data: {c['data']} | Total: R${c['Total']:.2f}" for i, c in enumerate(dados_cliente['compras'])]
+                    compra_remover = st.selectbox("Escolha a compra para excluir:", opcoes_compras, key="del_compra_sel")
+                    if st.button("Excluir Registro de Compra Selecionado", type="primary"):
+                        idx = int(compra_remover.split(" - ")[0])
+                        dados_cliente['compras'].pop(idx)
+                        st.success("Compra removida do histórico com sucesso!")
+                        st.rerun()
+            else:
+                st.write("Sem registros de compras.")
+                
+        # Histórico de Entradas Oculto
+        with st.expander("💵 Clique aqui para abrir - Histórico de Entradas (Pagamentos feitos)", expanded=False):
+            if dados_cliente['pagamentos']:
+                df_pagos = pd.DataFrame(dados_cliente['pagamentos'])
+                st.dataframe(
+                    df_pagos,
+                    column_config={"valor": st.column_config.NumberColumn("Valor Pago", format="R$ %.2f")},
+                    use_container_width=True, hide_index=True
+                )
+                
+                with st.expander("❌ Remover Pagamento do Histórico"):
+                    opcoes_pagos = [f"{i} - Data: {p['data']} | Valor: R${p['valor']:.2f}" for i, p in enumerate(dados_cliente['pagamentos'])]
+                    pago_remover = st.selectbox("Escolha o pagamento para excluir:", opcoes_pagos, key="del_pago_sel")
+                    if st.button("Excluir Registro de Pagamento Selecionado", type="primary"):
+                        idx = int(pago_remover.split(" - ")[0])
+                        dados_cliente['pagamentos'].pop(idx)
+                        st.success("Pagamento removido do histórico com sucesso!")
+                        st.rerun()
+            else:
+                st.write("Nenhum pagamento registrado.")
