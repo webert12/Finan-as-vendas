@@ -81,9 +81,12 @@ if menu == "📊 Dashboard":
     total_recebido = sum(sum(p['valor'] for p in c['pagamentos']) for c in st.session_state.clientes.values()) 
     total_a_receber = total_faturado - total_recebido 
     col1, col2, col3 = st.columns(3) 
-    with col1: st.container(border=True).metric("Total Faturado", f"R$ {total_faturado:,.2f}") 
-    with col2: st.container(border=True).metric("Total Recebido (Caixa)", f"R$ {total_recebido:,.2f}") 
-    with col3: st.container(border=True).metric("Total em Aberto (Dívidas)", f"R$ {total_a_receber:,.2f}", delta="- Devedores", delta_color="inverse") 
+    with col1: 
+        st.container(border=True).metric("Total Faturado", f"R$ {total_faturado:,.2f}") 
+    with col2: 
+        st.container(border=True).metric("Total Recebido (Caixa)", f"R$ {total_recebido:,.2f}") 
+    with col3: 
+        st.container(border=True).metric("Total em Aberto (Dívidas)", f"R$ {total_a_receber:,.2f}", delta="- Devedores", delta_color="inverse") 
     st.markdown("<br>", unsafe_allow_html=True) 
     st.markdown("### 📦 Visão Visual do Estoque Atual") 
     if not st.session_state.produtos.empty: 
