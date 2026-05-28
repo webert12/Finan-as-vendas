@@ -290,7 +290,7 @@ elif menu == "👥 Clientes & Crediário":
     if not st.session_state.clientes:
         st.info("Nenhuma movimentação de clientes registrada.")
     else:
-        # A tabela principal fica visível para controle rápido
+        # Painel Geral de Contas visível
         st.markdown("### 📋 Painel Geral de Contas")
         lista_geral_clientes = []
         for nome, dados in st.session_state.clientes.items():
@@ -317,7 +317,7 @@ elif menu == "👥 Clientes & Crediário":
             
         st.markdown("---")
         
-        # [ALTERAÇÃO COMPLETA] - Todo o bloco de ficha individual e históricos (Vermelho) agora só abre ao expandir aqui (Amarelo)
+        # Menu Amarelo para gerenciar o cliente selecionado
         with st.expander("🟡 CLIQUE AQUI PARA GERENCIAR FICHA, ABATIMENTOS E HISTÓRICO INDIVIDUAL", expanded=False):
             st.markdown("### 🔍 Ficha e Histórico Individual")
             cliente_sel = st.selectbox("Selecione o cliente para gerenciar:", list(st.session_state.clientes.keys()))
@@ -353,9 +353,9 @@ elif menu == "👥 Clientes & Crediário":
                     st.success("🎉 Ótimo! Este cliente não possui pendências financeiras.")
                 
             st.markdown("### 📋 Histórico Detalhado & Remoções")
-            aba1, aba2 = st.tabs(["📋 Saídas (O que comprou e Detalhes)", "💵 Entradas (Pagamentos feitos)"])
             
-            with aba1:
+            # [CORREÇÃO CRÍTICA] - Substituição das st.tabs por st.expanders individuais para ocultar as tabelas
+            with st.expander("📋 Clique aqui para abrir - Histórico de Saídas (O que comprou)", expanded=False):
                 if dados_cliente['compras']:
                     df_compras = pd.DataFrame(dados_cliente['compras'])
                     st.dataframe(
@@ -375,7 +375,7 @@ elif menu == "👥 Clientes & Crediário":
                 else:
                     st.write("Sem registros de compras.")
                     
-            with aba2:
+            with st.expander("💵 Clique aqui para abrir - Histórico de Entradas (Pagamentos feitos)", expanded=False):
                 if dados_cliente['pagamentos']:
                     df_pagos = pd.DataFrame(dados_cliente['pagamentos'])
                     st.dataframe(
