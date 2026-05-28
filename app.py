@@ -3,11 +3,13 @@ import pandas as pd
 from datetime import datetime
 import pytz  # Biblioteca profissional para controle de fuso horário
 
-# Configuração da página profissional
+# CORREÇÃO CRÍTICA: Definido o parâmetro initial_sidebar_state como "expanded"
+# Isso impede que o menu lateral fique oculto ou escondido em celulares Android e navegadores mobile.
 st.set_page_config(
     page_title="Ademir Trovão Azul - Gestão & Monitoramento",
     layout="wide",
-    page_icon="⚡"
+    page_icon="⚡",
+    initial_sidebar_state="expanded"
 )
 
 # Injeção de CSS para ocultar menus nativos indesejados e limpar a interface externa
@@ -122,7 +124,7 @@ elif menu == "📦 Gestão de Estoque":
             btn_produto = st.form_submit_button("Cadastrar / Adicionar Estoque") 
             if btn_produto and nome_prod: 
                 adicionar_produto(nome_prod, categoria, preco_venda, qtd_entrada) 
-                st.success(f"Estoque atualizado: +{qtd_entrada} unidades de '{nome_prod}'!") 
+                st.success(f"Estoque updated: +{qtd_entrada} unidades de '{nome_prod}'!") 
                 st.rerun() 
                 
     with aba_massa: 
@@ -194,7 +196,6 @@ elif menu == "🛒 Registrar Venda":
             with col_b1: 
                 st.markdown("<p style='margin:0; font-weight:bold; color:#1E3A8A;'>Painel de Registro</p>", unsafe_allow_html=True) 
             with col_b2: 
-                # SINTAXE CORRIGIDA AQUI: O 'if' foi movido para a linha de baixo com indentação limpa
                 if st.button("🧹 Limpar Tela", use_container_width=True, type="secondary"): 
                     st.rerun() 
             
