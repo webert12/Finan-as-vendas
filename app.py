@@ -116,7 +116,7 @@ elif menu == "📦 Gestão de Estoque":
             qtd_entrada = col4.number_input("Quantidade Comprada (Entrada)", min_value=1, step=1, key="qtd_unitario") 
             btn_produto = st.form_submit_button("Cadastrar / Adicionar Estoque") 
             if btn_produto and nome_prod: 
-                adicionar_produto(nome_prod, category=categoria, preco=preco_venda, qtd=qtd_entrada) 
+                adicionar_produto(nome_prod, categoria, preco_venda, qtd_entrada) 
                 st.success(f"Estoque updated: +{qtd_entrada} unidades de '{nome_prod}'!") 
                 st.rerun() 
     with aba_massa: 
@@ -184,9 +184,11 @@ elif menu == "🛒 Registrar Venda":
     else: 
         with st.container(border=True): 
             col_b1, col_b2 = st.columns([4, 1]) 
-            with col_b1: st.markdown("<p style='margin:0; font-weight:bold; color:#1E3A8A;'>Painel de Registro</p>", unsafe_allow_html=True) 
+            with col_b1: 
+                st.markdown("<p style='margin:0; font-weight:bold; color:#1E3A8A;'>Painel de Registro</p>", unsafe_allow_html=True) 
             with col_b2: 
-                if st.button("🧹 Limpar Tela", use_container_width=True, type="secondary"): st.rerun() 
+                if st.button("🧹 Limpar Tela", use_container_width=True, type="secondary"): 
+                    st.rerun() 
             clientes_existentes = list(st.session_state.clientes.keys()) 
             with st.container(border=True): 
                 nome_cliente = st.text_input("👤 Nome do Cliente (Se for novo, cadastraremos ao finalizar)").strip() 
@@ -236,9 +238,7 @@ elif menu == "👥 Clientes & Crediário":
     if not st.session_state.clientes: 
         st.info("Nenhuma movimentação de clientes registrada.") 
     else: 
-        # O BLOCO REMOVIDO: O painel alternável e a tabela do Resumo Geral de Débitos foram completamente extraídos daqui.
-        
-        # Ficha individual (Se torna o elemento principal ao entrar na aba)
+        # Ficha individual 
         st.markdown("### 🔍 Ficha e Histórico Individual") 
         cliente_sel = st.selectbox("Selecione o cliente para gerenciar:", list(st.session_state.clientes.keys())) 
         dados_cliente = st.session_state.clientes[cliente_sel] 
