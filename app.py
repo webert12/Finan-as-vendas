@@ -52,23 +52,6 @@ def adicionar_produto(nome, categoria, preco, qtd):
         novo_prod = pd.DataFrame([[novo_id, nome, categoria, preco, qtd]], columns=df.columns)
         st.session_state.produtos = pd.concat([st.session_state.produtos, novo_prod], ignore_index=True)
 
-def gerar_relatorio_consolidado():
-    vendas_produtos = {}
-    for cliente, dados in st.session_state.clientes.items():
-        for compra in dados['compras']:
-            for item in compra['itens']:
-                try:
-                    partes = item.split("x ", 1)
-                    if len(partes) == 2:
-                        qtd = int(partes[0])
-                        prod = partes[1]
-                        vendas_produtos[prod] = vendas_produtos.get(prod, 0) + qtd
-                except:
-                    pass
-    if vendas_produtos:
-        return pd.DataFrame(list(vendas_produtos.items()), columns=["📦 Produto", "🔢 Total Vendido"])
-    return pd.DataFrame(columns=["📦 Produto", "🔢 Total Vendido"])
-
 # --- INTERFACE PRINCIPAL ---
 st.markdown("<h1 style='text-align: center; color: #1E3A8A;'>⚡ Ademir Trovão Azul</h1>", unsafe_allow_html=True)
 st.markdown("<p style='text-align: center; font-weight: bold; color: #4B5563;'>Sistema Comercial de Monitoramento de Vendas & Estoque</p>", unsafe_allow_html=True)
@@ -94,15 +77,7 @@ if menu == "📊 Dashboard":
     with col3:
         st.container(border=True).metric("Total em Aberto (Dívidas)", f"R$ {total_a_receber:,.2f}", delta="- Devedores", delta_color="inverse")
     
-    # Relatório consolidado oculto
     st.markdown("<br>", unsafe_allow_html=True)
-    with st.expander("🟡 CLIQUE AQUI PARA VER O RELATÓRIO OCULTO DE SAÍDAS (Apenas Produtos e Qtds)"):
-        st.markdown("<h4 style='color: #1E3A8A;'>📋 Produtos mais Saídos</h4>", unsafe_allow_html=True)
-        df_consolidado = gerar_relatorio_consolidado()
-        if not df_consolidado.empty:
-            st.dataframe(df_consolidado, use_container_width=True, hide_index=True)
-        else:
-            st.info("Nenhuma venda registrada para processar o relatório.")
             
     st.markdown("### 📦 Visão Visual do Estoque Atual")
     if not st.session_state.produtos.empty:
@@ -234,7 +209,7 @@ elif menu == "🛒 Registrar Venda":
         with st.container(border=True):
             nome_cliente = st.text_input("👤 Nome do Cliente (Se for novo, cadastraremos ao finalizar)").strip()
             if clientes_existentes:
-                st.caption(f"**Clientes ativos no sistema:** {', '.join(clientes_existentes)}")
+                st.caption(f"**Clientes ativos no system:** {', '.join(clientes_existentes)}")
 
         st.markdown("<br>", unsafe_allow_html=True)
         
