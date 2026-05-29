@@ -1,272 +1,517 @@
 import streamlit as st
 import pandas as pd
-from datetime import datetime
-import pytz  # Biblioteca profissional para controle de fuso horário
+from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo  # Importação necessária para o fuso horário
+import os
+import json
 
-# Configuração da página profissional com menu expandido para Android e PC
-st.set_page_config(
-    page_title="Ademir Trovão Azul - Gestão & Monitoramento",
-    layout="wide",
-    page_icon="⚡",
-    initial_sidebar_state="expanded"
-)
+# --- CONFIGURAÇÃO DE FUSO HORÁRIO ---
+TZ = ZoneInfo("America/Sao_Paulo")
 
-# Injeção de CSS para ocultar menus nativos indesejados e limpar a interface externa
-st.markdown("""
-    <style>
-    #MainMenu {visibility: hidden;}
-    footer {visibility: hidden;}
-    header {visibility: hidden;}
-    .stDeployButton {display:none !important;}
-    footer {display: none !important;}
-    #stDecoration {display:none !important;}
-    </style>
-    """, unsafe_allow_html=True)
+# Configuração da página
+st.set_page_config(page_title="Gestão Financeira - Salão", layout="wide", page_icon="✂️")
 
-# --- CONFIGURAÇÃO DO HORÁRIO DE BRASÍLIA ---
-def obter_data_hora_brasilia():
-    fuso_brasilia = pytz.timezone('America/Sao_Paulo')
-    return datetime.now(fuso_brasilia)
+USUARIOS_FILE = "usuarios.json"
 
-# --- INICIALIZAÇÃO DO BANCO DE DADOS EM MEMÓRIA ---
-if 'produtos' not in st.session_state:
-    estoque_inicial = [
-        [1, 'Camisa Polo Básica', 'Roupas', 59.90, 20],
-        [2, 'Calça Jeans Casual', 'Roupas', 119.90, 15],
-        [3, 'Blusa de Frio Moletom', 'Roupas', 89.90, 10],
-        [4, 'Tênis Esportivo Running', 'Calçados', 189.90, 8],
-        [5, 'Sapato Social Couro', 'Calçados', 220.00, 5],
-        [6, 'Carrinho de Controle Remoto', 'Brinquedos', 75.00, 12],
-        [7, 'Boneca Articulada', 'Brinquedos', 49.90, 18]
-    ]
-    st.session_state.produtos = pd.DataFrame(
-        estoque_inicial,
-        columns=['ID', 'Nome', 'Categoria', 'Preço Venda', 'Estoque Atual']
-    )
+# --- CONFIGURAÇÃO DO ADMINISTRADOR MESTRE (VOCÊ) ---
+ADMIN_MESTRE_USER = "admin"
+ADMIN_MESTRE_PASS = "master2026"
 
-if 'clientes' not in st.session_state:
-    st.session_state.clientes = {
-        'Amanda': {
-            'compras': [{'data': '24/05/2026', 'itens': ['1x Calça Jeans Casual', '1x Blusa de Frio Moletom'], 'Total': 209.80}],
-            'pagamentos': [{'data': '24/05/2026 às 14:30', 'valor': 50.00}]
+# --- FUNÇÕES DE GERENCIAMENTO DE USUÁRIOS (COM TRATAMENTO DE VALIDADE) ---
+def carregar_usuarios():
+    hoje_str = datetime.now(TZ).strftime("%Y-%m-%d")
+    vencimento_padrao = (datetime.now(TZ) + timedelta(days=30)).strftime("%Y-%m-%d")
+    
+    if os.path.exists(USUARIOS_FILE):
+        with open(USUARIOS_FILE, "r") as f:
+            dados = json.load(f)
+            
+        # Migração automática caso o arquivo antigo esteja no formato antigo (string simples)
+        usuarios_atualizados = {}
+        modificado = False
+        for k, v in dados.items():
+            if isinstance(v, str):
+                usuarios_atualizados[k] = {
+                    "senha": v,
+                    "tipo": "Cliente",
+                    "vencimento": vencimento_padrao,
+                    "status": "Ativo"
+                }
+                modificado = True
+            else:
+                usuarios_atualizados[k] = v
+        if modificado:
+            salvar_usuarios(usuarios_atualizados)
+        return usuarios_atualizados
+
+    # Dados iniciais caso não exista o arquivo
+    usuarios_padrao = {
+        "salao_central": {
+            "senha": "admin123",
+            "tipo": "Cliente",
+            "vencimento": vencimento_padrao,
+            "status": "Ativo"
+        },
+        "barbearia_vanguard": {
+            "senha": "corte2026",
+            "tipo": "Teste",
+            "vencimento": (datetime.now(TZ) + timedelta(days=7)).strftime("%Y-%m-%d"),
+            "status": "Ativo"
         }
     }
+    with open(USUARIOS_FILE, "w") as f:
+        json.dump(usuarios_padrao, f, indent=4)
+    return usuarios_padrao
 
-if 'vendas' not in st.session_state:
-    st.session_state.vendas = pd.DataFrame(columns=['Data', 'Cliente', 'Produtos', 'Total', 'Status'])
+def salvar_usuarios(usuarios):
+    with open(USUARIOS_FILE, "w") as f:
+        json.dump(usuarios, f, indent=4)
 
-# --- FUNÇÕES AUXILIARES ---
-def adicionar_produto(nome, categoria, preco, qtd):
-    df = st.session_state.produtos
-    if nome in df['Nome'].values:
-        st.session_state.produtos.loc[st.session_state.produtos['Nome'] == nome, 'Estoque Atual'] += qtd
+# --- FUNÇÕES DE PERSISTÊNCIA DE DADOS ISOLADOS POR USUÁRIO ---
+def obter_nomes_arquivos():
+    usuario = st.session_state.usuario_logado
+    return f"servicos_{usuario}.json", f"fluxo_caixa_{usuario}.csv"
+
+def carregar_servicos():
+    servicos_file, _ = obter_nomes_arquivos()
+    if os.path.exists(servicos_file):
+        with open(servicos_file, "r") as f:
+            return json.load(f)
+    return {
+        "Corte de Cabelo": 25.00,
+        "Barba": 25.00,
+        "Combo Cabelo e Barba": 50.00
+    }
+
+def salvar_servicos(servicos):
+    servicos_file, _ = obter_nomes_arquivos()
+    with open(servicos_file, "w") as f:
+        json.dump(servicos, f, indent=4)
+
+def carregar_fluxo():
+    _, fluxo_file = obter_nomes_arquivos()
+    if os.path.exists(fluxo_file):
+        try:
+            df = pd.read_csv(fluxo_file)
+            df['Data'] = pd.to_datetime(df['Data'])
+            return df
+        except Exception:
+            return pd.DataFrame(columns=["Data", "Tipo", "Descrição", "Valor"])
+    return pd.DataFrame(columns=["Data", "Tipo", "Descrição", "Valor"])
+
+def salvar_fluxo(df):
+    _, fluxo_file = obter_nomes_arquivos()
+    df.to_csv(fluxo_file, index=False)
+
+# --- CONTROLE DE SESSÃO E LOGIN ---
+if 'autenticado' not in st.session_state:
+    st.session_state.autenticado = False
+if 'usuario_logado' not in st.session_state:
+    st.session_state.usuario_logado = None
+if 'eh_admin' not in st.session_state:
+    st.session_state.eh_admin = False
+
+usuarios_cadastrados = carregar_usuarios()
+
+# --- TELA DE LOGIN ---
+if not st.session_state.autenticado:
+    st.title("✂️ Sistema de Gestão - Login")
+    st.markdown("---")
+    
+    with st.form("form_login"):
+        st.subheader("Acesse seu Painel")
+        usuario_input = st.text_input("Usuário do Salão ou ADM:").strip().lower()
+        senha_input = st.text_input("Senha:", type="password")
+        botao_entrar = st.form_submit_button("Entrar no Sistema")
+        
+        if botao_entrar:
+            if usuario_input == ADMIN_MESTRE_USER and senha_input == ADMIN_MESTRE_PASS:
+                st.session_state.autenticado = True
+                st.session_state.usuario_logado = "Administrador"
+                st.session_state.eh_admin = True
+                st.success("Acesso master concedido!")
+                st.rerun()
+            elif usuario_input in usuarios_cadastrados and usuarios_cadastrados[usuario_input]["senha"] == senha_input:
+                
+                # --- VALIDAÇÃO DE EXPIRAÇÃO AUTOMÁTICA ---
+                dados_user = usuarios_cadastrados[usuario_input]
+                data_vencimento = datetime.strptime(dados_user["vencimento"], "%Y-%m-%d").date()
+                hoje = datetime.now(TZ).date()
+                
+                if hoje > data_vencimento or dados_user.get("status") == "Suspenso":
+                    st.error(f"❌ ACESSO BLOQUEADO! O período de {dados_user['tipo']} venceu em {data_vencimento.strftime('%d/%m/%Y')}. Entre em contato com o suporte para renovação.")
+                    st.stop()
+                
+                st.session_state.autenticado = True
+                st.session_state.usuario_logado = usuario_input
+                st.session_state.eh_admin = False
+                st.session_state.servicos = carregar_servicos()
+                st.session_state.fluxo_caixa = carregar_fluxo()
+                st.success(f"Carregando painel de {usuario_input}...")
+                st.rerun()
+            else:
+                st.error("Usuário ou senha incorretos. Verifique suas credenciais.")
+    st.stop()
+
+# =====================================================================
+# --- INTERFACE 1: PAINEL DO ADMINISTRADOR MESTRE (GERENCIAR LICENÇAS) ---
+# =====================================================================
+if st.session_state.eh_admin:
+    st.title("👑 Central do Administrador - Gestão de Clientes & Licenças")
+    st.markdown("Aqui você cadastra novos salões, define períodos de teste e gerencia vencimentos.")
+    st.markdown("---")
+    
+    col_cad, col_lista = st.columns([1, 1.2])
+    
+    with col_cad:
+        st.subheader("➕ Registrar ou Renovar Salão")
+        with st.form("form_cadastro_cliente"):
+            novo_usuario = st.text_input("Identificador/Usuário do Salão:", help="Ex: salao_do_bairro").strip().lower()
+            nova_senha = st.text_input("Senha de Acesso:", type="password").strip()
+            
+            tipo_conta = st.selectbox("Tipo de Conta:", ["Teste", "Cliente"])
+            dias_validade = st.number_input("Dias de Acesso/Validade:", min_value=1, max_value=365, value=7 if tipo_conta == "Teste" else 30)
+            
+            btn_cadastrar = st.form_submit_button("Salvar / Atualizar Conta", type="primary")
+            
+            if btn_cadastrar:
+                if not novo_usuario or not nova_senha:
+                    st.error("Preencha o usuário e senha para salvar.")
+                elif novo_usuario == ADMIN_MESTRE_USER:
+                    st.error("Nome reservado do sistema.")
+                else:
+                    vencimento_calculado = (datetime.now(TZ) + timedelta(days=dias_validade)).strftime("%Y-%m-%d")
+                    usuarios_cadastrados[novo_usuario] = {
+                        "senha": nova_senha,
+                        "tipo": tipo_conta,
+                        "vencimento": vencimento_calculado,
+                        "status": "Ativo"
+                    }
+                    salvar_usuarios(usuarios_cadastrados)
+                    st.success(f"Sucesso! Salão '{novo_usuario}' configurado como '{tipo_conta}' válido por {dias_validade} dias (Até {datetime.strptime(vencimento_calculado, '%Y-%m-%d').strftime('%d/%m/%Y')}).")
+                    st.rerun()
+                    
+    with col_lista:
+        st.subheader("👥 Salões Cadastrados e Status de Licença")
+        
+        # Montar um DataFrame amigável para exibição das licenças
+        lista_formatada = []
+        for user, info in usuarios_cadastrados.items():
+            dt_venc = datetime.strptime(info['vencimento'], "%Y-%m-%d").date()
+            status_real = "Ativo" if datetime.now(TZ).date() <= dt_venc else "🔴 Expirado"
+            lista_formatada.append({
+                "Salão / Usuário": user,
+                "Tipo": info["tipo"],
+                "Vencimento": dt_venc.strftime("%d/%m/%Y"),
+                "Situação": status_real
+            })
+            
+        df_usuarios = pd.DataFrame(lista_formatada)
+        st.dataframe(df_usuarios, use_container_width=True, hide_index=True)
+        
+        st.markdown("---")
+        st.subheader("🗑️ Cancelar Conta Permanentemente")
+        salao_remover = st.selectbox("Selecione o salão que deseja deletar:", ["Selecione..."] + list(usuarios_cadastrados.keys()))
+        
+        if st.button("Excluir Conta Permanentemente", type="primary"):
+            if salao_remover != "Selecione...":
+                del usuarios_cadastrados[salao_remover]
+                salvar_usuarios(usuarios_cadastrados)
+                st.warning(f"O acesso do salão '{salao_remover}' foi totalmente removido do servidor.")
+                st.rerun()
+            else:
+                st.error("Selecione um salão válido para remover.")
+
+    with st.sidebar:
+        st.header("Painel Master")
+        st.info("Você está logado como Administrador Geral.")
+        if st.button("🚪 Sair do Modo ADM", use_container_width=True):
+            st.session_state.autenticado = False
+            st.session_state.usuario_logado = None
+            st.session_state.eh_admin = False
+            st.rerun()
+    st.stop()
+
+
+# =====================================================================
+# --- INTERFACE 2: PAINEL EXCLUSIVO DO CLIENTE (SALÃO INDIVIDUAL) ----
+# =====================================================================
+
+nome_salao_formatado = st.session_state.usuario_logado.replace("_", " ").title()
+st.title(f"✂️ {nome_salao_formatado} - Gestão Financeira")
+
+# Mostrar detalhes da licença do próprio usuário logado de maneira sutil
+dados_proprios = usuarios_cadastrados[st.session_state.usuario_logado]
+venc_f = datetime.strptime(dados_proprios['vencimento'], "%Y-%m-%d").strftime("%d/%m/%Y")
+st.markdown(f"*Painel Exclusivo | Licença Tipo: **{dados_proprios['tipo']}** (Válida até {venc_f})*")
+st.markdown("---")
+
+# --- SIDEBAR: GERENCIAR SERVIÇOS ---
+with st.sidebar:
+    st.header("⚙️ Configurações de Serviços")
+    st.markdown("Selecione um serviço para alterar ou escolha criar um novo.")
+    
+    opcoes_gerenciamento = ["➕ Cadastrar Novo Serviço"] + list(st.session_state.servicos.keys())
+    servico_selecionado_gerenciar = st.selectbox("Escolha uma ação:", opcoes_gerenciamento, key="sb_gerenciar_servicos")
+    
+    if servico_selecionado_gerenciar == "➕ Cadastrar Novo Serviço":
+        nome_padrao = ""
+        preco_padrao = 0.0
+        botao_label = "Cadastrar Serviço"
     else:
-        novo_id = int(df['ID'].max() + 1) if not df.empty else 1
-        novo_prod = pd.DataFrame([[novo_id, nome, categoria, preco, qtd]], columns=df.columns)
-        st.session_state.produtos = pd.concat([st.session_state.produtos, novo_prod], ignore_index=True)
+        nome_padrao = servico_selecionado_gerenciar
+        preco_padrao = float(st.session_state.servicos[servico_selecionado_gerenciar])
+        botao_label = "Salvar Alterações"
+        
+    novo_servico = st.text_input("Nome do Serviço:", value=nome_padrao, key=f"input_nome_{servico_selecionado_gerenciar}")
+    novo_preco = st.number_input("Preço (R$):", min_value=0.0, value=preco_padrao, step=5.0, key=f"input_preco_{servico_selecionado_gerenciar}")
+    
+    col_btn1, col_btn2 = st.columns(2)
+    
+    with col_btn1:
+        if st.button(botao_label, type="primary", key=f"btn_salvar_{servico_selecionado_gerenciar}"):
+            if novo_servico:
+                if servico_selecionado_gerenciar != "➕ Cadastrar Novo Serviço" and servico_selecionado_gerenciar != novo_servico:
+                    if servico_selecionado_gerenciar in st.session_state.servicos:
+                        del st.session_state.servicos[servico_selecionado_gerenciar]
+                
+                st.session_state.servicos[novo_servico] = novo_preco
+                salvar_servicos(st.session_state.servicos)
+                st.success("Serviço atualizado!")
+                st.rerun()
+            else:
+                st.error("O nome do serviço não pode ser vazio.")
+                
+    with col_btn2:
+        if servico_selecionado_gerenciar != "➕ Cadastrar Novo Serviço":
+            if st.button("🗑️ Excluir", key=f"btn_deletar_{servico_selecionado_gerenciar}"):
+                if servico_selecionado_gerenciar in st.session_state.servicos:
+                    del st.session_state.servicos[servico_selecionado_gerenciar]
+                salvar_servicos(st.session_state.servicos)
+                st.warning("Serviço excluído!")
+                st.rerun()
 
-# --- INTERFACE PRINCIPAL ---
-st.markdown("<h1 style='text-align: center; color: #1E3A8A;'>⚡ Ademir Trovão Azul</h1>", unsafe_allow_html=True)
-st.markdown("<p style='text-align: center;'>Sistema Comercial de Monitoramento de Vendas & Estoque</p>", unsafe_allow_html=True)
-st.markdown("---") 
+    st.markdown("---")
+    st.markdown("### Lista de Valores Atuais")
+    for serv, preco in st.session_state.servicos.items():
+        st.text(f"• {serv}: R$ {preco:.2f}")
+        
+    st.markdown("---")
+    if st.button("🚪 Sair do Painel", use_container_width=True):
+        st.session_state.autenticado = False
+        st.session_state.usuario_logado = None
+        st.session_state.eh_admin = False
+        st.rerun()
 
-# Menu Lateral Comercial
-st.sidebar.markdown("### Menu de Controle")
-menu = st.sidebar.selectbox("Escolha a tela:", ["📊 Dashboard", "📦 Gestão de Estoque", "👥 Clientes & Crediário", "🛒 Registrar Venda"]) 
+# --- ABAS DA TELA PRINCIPAL ---
+tab1, tab2, tab3 = st.tabs(["📊 Dashboard", "💰 Lançar Movimentação", "📜 Histórico de Caixa"])
 
-# ================= RECURSO 1: DASHBOARD =================
-if menu == "📊 Dashboard":
-    st.subheader("📊 Faturamento e Saúde Financeira")
+# --- TAB 2: LANÇAR MOVIMENTAÇÃO (LAYOUT ULTRA PROFISSIONAL E LIMPO) ---
+with tab2:
+    st.markdown("### 🛠️ Central de Lançamentos")
+    st.markdown("Clique nos quadros abaixo para abrir os formulários de registro.")
+    
+    # QUADRO 1: ENTRADAS (ATENDIMENTO PAGO)
+    with st.expander("📥 REGISTRAR ENTRADA (Atendimento Concluído e Pago)", expanded=False):
+        if list(st.session_state.servicos.keys()):
+            servico_selecionado = st.selectbox("Selecione o Serviço realizado:", list(st.session_state.servicos.keys()), key="selectbox_servico_atendimento")
+            preco_sugerido = st.session_state.servicos[servico_selecionado]
+            
+            preco_final = st.number_input("Valor Cobrado (R$):", value=preco_sugerido, step=1.0, key=f"entrada_val_{servico_selecionado}")
+            data_entrada = st.date_input("Data do Atendimento:", datetime.now(TZ).date(), key="entrada_data")
+            
+            if st.button("Confirmar e Lançar Entrada", type="primary"):
+                nova_linha = pd.DataFrame([{
+                    "Data": pd.to_datetime(data_entrada),
+                    "Tipo": "Entrada",
+                    "Descrição": f"Atendimento: {servico_selecionado}",
+                    "Valor": preco_final
+                }])
+                st.session_state.fluxo_caixa = pd.concat([st.session_state.fluxo_caixa, nova_linha], ignore_index=True)
+                salvar_fluxo(st.session_state.fluxo_caixa) 
+                st.success("Entrada financeira registrada!")
+                st.rerun()
+        else:
+            st.info("Cadastre pelo menos um serviço na barra lateral para registrar entradas.")
 
-    total_faturado = sum(v['Total'] for c in st.session_state.clientes.values() for v in c['compras']) 
-    total_recebido = sum(sum(p['valor'] for p in c['pagamentos']) for c in st.session_state.clientes.values()) 
-    total_a_receber = total_faturado - total_recebido 
-    col1, col2, col3 = st.columns(3) 
-    with col1: 
-        st.container(border=True).metric("Total Faturado", f"R$ {total_faturado:,.2f}") 
-    with col2: 
-        st.container(border=True).metric("Total Recebido (Caixa)", f"R$ {total_recebido:,.2f}") 
-    with col3: 
-        st.container(border=True).metric("Total em Aberto (Dívidas)", f"R$ {total_a_receber:,.2f}", delta="- Devedores", delta_color="inverse") 
-    st.markdown("<br>", unsafe_allow_html=True) 
-    st.markdown("### 📦 Visão Visual do Estoque Atual") 
-    if not st.session_state.produtos.empty: 
-        st.data_editor( 
-            st.session_state.produtos, 
-            column_config={ 
-                "ID": st.column_config.NumberColumn("ID", width="small"), 
-                "Preço Venda": st.column_config.NumberColumn("Preço de Venda", format="R$ %.2f"), 
-                "Estoque Atual": st.column_config.ProgressColumn("Nível de Estoque", help="Quantidade disponível", min_value=0, max_value=100, format="%d un") 
-            }, 
-            disabled=True, 
-            use_container_width=True, 
-            hide_index=True 
-        ) 
-    else: 
-        st.info("Nenhum produto cadastrado no estoque ainda.") 
+    # QUADRO 2: SAÍDAS (DESPESAS)
+    with st.expander("📤 REGISTRAR SAÍDA (Pagamento de Contas e Custos)", expanded=False):
+        # --- ATUALIZAÇÃO AQUI ---
+        tipo_despesa = st.selectbox("Selecione o tipo de gasto:", ["Outra Despesa", "Café da tarde", "Jantar"])
+        
+        if tipo_despesa == "Outra Despesa":
+            descricao_saida = st.text_input("Descreva a Despesa (Ex: Luz, Aluguel, Produtos):")
+        else:
+            descricao_saida = tipo_despesa
+        # ------------------------
+        
+        valor_saida = st.number_input("Valor da Despesa (R$):", min_value=0.0, step=5.0, key="saida_val")
+        data_saida = st.date_input("Data do Pagamento:", datetime.now(TZ).date(), key="saida_data")
+        
+        if st.button("Confirmar e Lançar Saída", type="primary"):
+            if descricao_saida and valor_saida > 0:
+                nova_linha = pd.DataFrame([{
+                    "Data": pd.to_datetime(data_saida),
+                    "Tipo": "Saída",
+                    "Descrição": descricao_saida,
+                    "Valor": -valor_saida  
+                }])
+                st.session_state.fluxo_caixa = pd.concat([st.session_state.fluxo_caixa, nova_linha], ignore_index=True)
+                salvar_fluxo(st.session_state.fluxo_caixa) 
+                st.success("Despesa lançada com sucesso!")
+                st.rerun()
+            else:
+                st.error("Preencha a descrição e o valor da despesa.")
 
-# ================= RECURSO 2: GESTÃO DE ESTOQUE =================
-elif menu == "📦 Gestão de Estoque":
-    st.subheader("📦 Controle e Alteração de Estoque")
+    # QUADRO 3: PRODUTO FIADO (PENDÊNCIAS)
+    with st.expander("⏳ REGISTRAR PENDÊNCIA (Corte / Serviço Fiado)", expanded=False):
+        if list(st.session_state.servicos.keys()):
+            nome_devedor = st.text_input("Nome do Cliente (Quem ficou devendo?):", key="input_nome_devedor").strip()
+            servico_pendente = st.selectbox("Selecione o Serviço feito:", list(st.session_state.servicos.keys()), key="selectbox_servico_pendencia")
+            preco_sugerido_p = st.session_state.servicos[servico_pendente]
+            
+            preco_final_p = st.number_input("Valor Pendente (R$):", value=preco_sugerido_p, step=1.0, key=f"pendencia_val_{servico_pendente}")
+            data_pendencia = st.date_input("Data da Realização:", datetime.now(TZ).date(), key="pendencia_data")
+            
+            if st.button("Salvar Registro de Fiado", type="primary"):
+                if nome_devedor:
+                    nova_linha = pd.DataFrame([{
+                        "Data": pd.to_datetime(data_pendencia),
+                        "Tipo": "Pendência",
+                        "Descrição": f"Fiado de: {nome_devedor} ({servico_pendente})",
+                        "Valor": preco_final_p
+                    }])
+                    st.session_state.fluxo_caixa = pd.concat([st.session_state.fluxo_caixa, nova_linha], ignore_index=True)
+                    salvar_fluxo(st.session_state.fluxo_caixa) 
+                    st.success(f"Pendência de {nome_devedor} anotada.")
+                    st.rerun()
+                else:
+                    st.error("Por favor, preencha o nome do cliente.")
+        else:
+            st.info("Cadastre pelo menos um serviço na barra lateral para registrar pendências.")
 
-    aba_unitario, aba_massa, aba_gerenciar = st.tabs(["🆕 Adicionar Novo", "📋 Carga em Massa", "🛠️ Alterar / Excluir Existente"]) 
-    with aba_unitario: 
-        with st.form("form_produto"): 
-            col1, col2 = st.columns(2) 
-            nome_prod = col1.text_input("Nome do Produto (Ex: Vestido Florido)") 
-            categoria = col2.selectbox("Categoria", ["Roupas", "Calçados", "Brinquedos"], key="cat_unitario") 
-            col3, col4 = st.columns(2) 
-            preco_venda = col3.number_input("Preço de Venda (R$)", min_value=0.0, step=1.0, key="preco_unitario") 
-            qtd_entrada = col4.number_input("Quantidade Comprada (Entrada)", min_value=1, step=1, key="qtd_unitario") 
-            btn_produto = st.form_submit_button("Cadastrar / Adicionar Estoque") 
-            if btn_produto and nome_prod: 
-                adicionar_produto(nome_prod, categoria, preco_venda, qtd_entrada) 
-                st.success(f"Estoque atualizado: +{qtd_entrada} unidades de '{nome_prod}'!") 
-                st.rerun() 
-    with aba_massa: 
-        st.markdown(""" **Modelo exigido:** `Nome, Categoria, Preço, Quantidade` ```text Calça Moletom, Roupas, 89.90, 15 Tênis Corrida, Calçados, 199.00, 8 ``` """) 
-        texto_colado = st.text_area("Cole as linhas do seu estoque aqui:", height=150, placeholder="Nome, Categoria, Preço, Quantidade") 
-        if st.button("Processar e Salvar Lista"): 
-            if texto_colado.strip(): 
-                linhas = texto_colado.strip().split("\n") 
-                sucessos = 0 
-                for inline in linhas: 
-                    try: 
-                        partes = [p.strip() for p in inline.split(",")] 
-                        if len(partes) == 4: 
-                            nome = partes[0] 
-                            cat = partes[1] if partes[1] in ["Roupas", "Calçados", "Brinquedos"] else "Roupas" 
-                            preco = float(partes[2]) 
-                            qtd = int(partes[3]) 
-                            adicionar_produto(nome, cat, preco, qtd) 
-                            sucessos += 1 
-                    except Exception: 
-                        pass 
-                if sucessos > 0: 
-                    st.success(f"Sucesso! {sucessos} produtos processados.") 
-                    st.rerun() 
-    with aba_gerenciar: 
-        if st.session_state.produtos.empty: 
-            st.info("Não há produtos no estoque para gerenciar.") 
-        else: 
-            st.markdown("#### Selecione um item cadastrado para modificar:") 
-            lista_nomes_produtos = st.session_state.produtos['Nome'].tolist() 
-            prod_selecionado = st.selectbox("Escolha o Produto:", lista_nomes_produtos) 
-            linha_produto = st.session_state.produtos.loc[st.session_state.produtos['Nome'] == prod_selecionado].iloc[0] 
-            estoque_atual = int(linha_produto['Estoque Atual']) 
-            preco_atual = float(linha_produto['Preço Venda']) 
-            st.warning(f"Status Atual de **{prod_selecionado}**: {estoque_atual} unidades em estoque | Preço atual: R$ {preco_atual:.2f}") 
-            col_alt1, col_alt2 = st.columns(2) 
-            with col_alt1: 
-                st.markdown("##### ➕ Entrada / Ajuste Positivo") 
-                qtd_mais = st.number_input("Adicionar quantas unidades ao estoque?", min_value=0, step=1, value=0, key="add_qtd_mais") 
-                novo_preco = st.number_input("Alterar preço de venda para: (R$)", min_value=0.0, value=preco_atual, step=5.0, key="up_novo_preco") 
-                if st.button("Salvar Alterações de Estoque/Preço"): 
-                    if qtd_mais > 0 or novo_preco != preco_atual: 
-                        st.session_state.produtos.loc[st.session_state.produtos['Nome'] == prod_selecionado, 'Estoque Atual'] += qtd_mais 
-                        st.session_state.produtos.loc[st.session_state.produtos['Nome'] == prod_selecionado, 'Preço Venda'] = novo_preco 
-                        st.success(f"Ajuste realizado! {prod_selecionado} agora tem {estoque_atual + qtd_mais} unidades.") 
-                        st.rerun() 
-            with col_alt2: 
-                st.markdown("##### ❌ Exclusão de Mercadoria") 
-                st.write("Deseja retirar esse item permanentemente?") 
-                confirmar_exclusao = st.checkbox("Sim, quero apagar este produto.") 
-                if st.button("Remover Produto do Sistema", type="primary"): 
-                    if confirmar_exclusao: 
-                        st.session_state.produtos = st.session_state.produtos[st.session_state.produtos['Nome'] != prod_selecionado] 
-                        st.success(f"O produto '{prod_selecionado}' foi deletado.") 
-                        st.rerun() 
-                    else: 
-                        st.error("Marque a caixa de confirmação para prosseguir.") 
+    # QUADRO 4: CONFIRMAR PAGAMENTO DE FIADO
+    with st.expander("✅ CONFIRMAR RECEBIMENTO DE FIADO (Dar Baixa)", expanded=False):
+        df_fluxo_atual = st.session_state.fluxo_caixa
+        df_pendencias = df_fluxo_atual[df_fluxo_atual['Tipo'] == 'Pendência']
+        
+        if not df_pendencias.empty:
+            opcoes_pendentes = {}
+            for idx, row in df_pendencias.iterrows():
+                try:
+                    data_f = pd.to_datetime(row['Data']).strftime('%d/%m/%Y')
+                except:
+                    data_f = str(row['Data'])
+                label_opcao = f"{row['Descrição']} - R$ {abs(row['Valor']):.2f} ({data_f})"
+                opcoes_pendentes[label_opcao] = idx
+                
+            pendencia_selecionada = st.selectbox("Selecione o cliente que está pagando agora:", list(opcoes_pendentes.keys()), key="sb_dar_baixa_fiado")
+            
+            if st.button("Baixar Débito e Registrar Entrada de Caixa", type="primary", key="btn_confirmar_baixa_fiado"):
+                idx_alterar = opcoes_pendentes[pendencia_selecionada]
+                
+                st.session_state.fluxo_caixa.at[idx_alterar, 'Tipo'] = 'Entrada'
+                st.session_state.fluxo_caixa.at[idx_alterar, 'Data'] = pd.to_datetime(datetime.now(TZ).date())
+                
+                desc_anterior = st.session_state.fluxo_caixa.at[idx_alterar, 'Descrição']
+                st.session_state.fluxo_caixa.at[idx_alterar, 'Descrição'] = desc_anterior.replace("Fiado de:", "Recebido Fiado:") + " [PAGO HOJE]"
+                
+                salvar_fluxo(st.session_state.fluxo_caixa)
+                st.success("Sucesso! O valor foi migrado para as Entradas de hoje.")
+                st.rerun()
+        else:
+            st.info("Não existem contas fiadas em aberto no momento.")
 
-# ================= RECURSO 3: REGISTRAR VENDA =================
-elif menu == "🛒 Registrar Venda":
-    st.subheader("🛒 Venda Direta e Cadastro Automático")
+# --- LÓGICA DE CÁLCULO DOS GANHOS (D/W/M) ---
+df = st.session_state.fluxo_caixa.copy()
+if not df.empty:
+    df['Data'] = pd.to_datetime(df['Data'])
+    hoje = pd.Timestamp(datetime.now(TZ).date())
+    
+    df_limpo = df.dropna(subset=['Data'])
+    df_diario = df_limpo[df_limpo['Data'].dt.date == hoje.date()]
+    df_semanal = df_limpo[df_limpo['Data'] >= (hoje - timedelta(days=7))]
+    df_mensal = df_limpo[df_limpo['Data'].dt.month == hoje.month]
+    
+    ent_dia = df_diario[df_diario['Tipo'] == 'Entrada']['Valor'].sum()
+    sai_dia = df_diario[df_diario['Tipo'] == 'Saída']['Valor'].sum()
+    lucro_dia = ent_dia + sai_dia
+    
+    ent_sem = df_semanal[df_semanal['Tipo'] == 'Entrada']['Valor'].sum()
+    sai_sem = df_semanal[df_semanal['Tipo'] == 'Saída']['Valor'].sum()
+    lucro_sem = ent_sem + sai_sem
+    
+    ent_mes = df_mensal[df_mensal['Tipo'] == 'Entrada']['Valor'].sum()
+    sai_mes = df_mensal[df_mensal['Tipo'] == 'Saída']['Valor'].sum()
+    lucro_mes = ent_mes + sai_mes
+else:
+    ent_dia = sai_dia = lucro_dia = 0
+    ent_sem = sai_sem = lucro_sem = 0
+    ent_mes = sai_mes = lucro_mes = 0
 
-    if st.session_state.produtos.empty: 
-        st.warning("Cadastre produtos no estoque antes de realizar uma venda.") 
-    else: 
-        with st.container(border=True): 
-            col_b1, col_b2 = st.columns([4, 1]) 
-            with col_b1: 
-                st.markdown("<p style='margin:0; font-weight:bold; color:#1E3A8A;'>Painel de Registro</p>", unsafe_allow_html=True) 
-            with col_b2: 
-                if st.button("🧹 Limpar Tela", use_container_width=True, type="secondary"): 
-                    st.rerun() 
-            clientes_existentes = list(st.session_state.clientes.keys()) 
-            with st.container(border=True): 
-                nome_cliente = st.text_input("👤 Nome do Cliente (Se for novo, cadastraremos ao finalizar)").strip() 
-                if clientes_existentes: 
-                    st.caption(f"**Clientes ativos no sistema:** {', '.join(clientes_existentes)}") 
-                st.markdown("<br>", unsafe_allow_html=True) 
-                produtos_disponiveis = st.session_state.produtos['Nome'].tolist() 
-                produtos_selecionados = st.multiselect("🛍️ Selecione as mercadorias vendidas", produtos_disponiveis) 
-                carrinho = {} 
-                total_venda = 0.0 
-                if produtos_selecionados: 
-                    st.markdown("#### 🔢 Defina as quantidades:") 
-                    for prod in produtos_selecionados: 
-                        estoque_max = int(st.session_state.produtos.loc[st.session_state.produtos['Nome'] == prod, 'Estoque Atual'].values[0]) 
-                        preco_un = float(st.session_state.produtos.loc[st.session_state.produtos['Nome'] == prod, 'Preço Venda'].values[0]) 
-                        if estoque_max <= 0: 
-                            st.error(f"Produto '{prod}' está esgotado no estoque!") 
-                            continue 
-                        with st.container(border=True): 
-                            qtd = st.number_input(f"{prod} — Preço: R$ {preco_un:.2f} (Estoque atual: {estoque_max})", min_value=1, max_value=estoque_max, key=f"qtd_{prod}") 
-                            carrinho[prod] = {'qtd': qtd, 'preco': preco_un} 
-                            total_venda += (preco_un * qtd) 
-                    st.markdown(f"<h2 style='color:#1E3A8A;'>Total Geral: R$ {total_venda:,.2f}</h2>", unsafe_allow_html=True) 
-                    if st.button("🚀 Confirmar Venda e Lançar Débito"): 
-                        if not nome_cliente: 
-                            st.error("Insira o nome do cliente para salvar.") 
-                        elif not carrinho: 
-                            st.error("O carrinho não possui itens válidos.") 
-                        else: 
-                            for prod, info in carrinho.items(): 
-                                st.session_state.produtos.loc[st.session_state.produtos['Nome'] == prod, 'Estoque Atual'] -= info['qtd'] 
-                            if nome_cliente not in st.session_state.clientes: 
-                                st.session_state.clientes[nome_cliente] = {'compras': [], 'pagamentos': []} 
-                            data_atual = obter_data_hora_brasilia().strftime("%d/%m/%Y") 
-                            st.session_state.clientes[nome_cliente]['compras'].append({ 
-                                'data': data_atual, 
-                                'itens': [f"{info['qtd']}x {prod}" for prod, info in carrinho.items()], 
-                                'Total': total_venda 
-                            }) 
-                            st.success(f"Venda concluída com sucesso para {nome_cliente}!") 
-                            st.rerun() 
+# --- TAB 1: DASHBOARD ---
+with tab1:
+    st.subheader("📊 Resumo Financeiro Real-Time")
+    
+    m1, m2, m3 = st.columns(3)
+    with m1:
+        st.metric(label="Fechamento do Dia (Líquido)", value=f"R$ {lucro_dia:.2f}", delta=f"+ R$ {ent_dia:.2f} Entradas")
+    with m2:
+        st.metric(label="Últimos 7 Dias (Líquido)", value=f"R$ {lucro_sem:.2f}", delta=f"+ R$ {ent_sem:.2f} Entradas")
+    with m3:
+        st.metric(label="Mês Atual (Líquido)", value=f"R$ {lucro_mes:.2f}", delta=f"+ R$ {ent_mes:.2f} Entradas")
+        
+    st.markdown("---")
+    st.subheader("📈 Resumo de Entradas vs Saídas (Mês Atual)")
+    
+    dados_grafico = pd.DataFrame({
+        "Categoria": ["Entradas", "Saídas"],
+        "Total (R$)": [ent_mes, abs(sai_mes)]
+    })
+    st.bar_chart(data=dados_grafico, x="Categoria", y="Total (R$)", color="#29b6f6")
 
-# ================= RECURSO 4: CLIENTES & CREDIÁRIO =================
-elif menu == "👥 Clientes & Crediário":
-    st.subheader("👥 Painel de Controle de Clientes e Recebimentos")
-
-    if not st.session_state.clientes: 
-        st.info("Nenhuma movimentação de clientes registrada.") 
-    else: 
-        # Ficha individual (O antigo Painel Geral foi totalmente removido daqui, mantendo o restante funcionando normalmente)
-        st.markdown("### 🔍 Ficha e Histórico Individual") 
-        cliente_sel = st.selectbox("Selecione o cliente para gerenciar:", list(st.session_state.clientes.keys())) 
-        dados_cliente = st.session_state.clientes[cliente_sel] 
-        total_comprado = sum(c['Total'] for c in dados_cliente['compras']) 
-        total_pago = sum(p['valor'] for p in dados_cliente['pagamentos']) 
-        saldo_devedor = total_comprado - total_pago 
-        c1, c2, c3 = st.columns(3) 
-        c1.metric("Total Comprado", f"R$ {total_comprado:,.2f}") 
-        c2.metric("Total Pago", f"R$ {total_pago:,.2f}") 
-        c3.metric("Dívida Restante", f"R$ {saldo_devedor:,.2f}") 
-        st.markdown("<br>", unsafe_allow_html=True) 
-        with st.container(border=True): 
-            st.markdown("#### 💰 Registrar Novo Abatimento") 
-            if saldo_devedor > 0: 
-                with st.form("form_pagamento"): 
-                    valor_pago = st.number_input("Valor entregue pelo cliente (R$)", min_value=0.01, max_value=float(saldo_devedor), step=5.0) 
-                    btn_pagar = st.form_submit_button("Confirmar e Dar Desconto na Dívida") 
-                    if btn_pagar: 
-                        data_pagto = obter_data_hora_brasilia().strftime("%d/%m/%Y às %H:%M") 
-                        dados_cliente['pagamentos'].append({ 
-                            'data': data_pagto, 
-                            'valor': valor_pago 
-                        }) 
-                        st.success(f"Excelente! R$ {valor_pago:.2f} descontados da conta de {cliente_sel}!") 
-                        st.rerun() 
-            else: 
-                st.success("🎉 Ótimo! Este cliente não possui pendências financeiras.")
+# --- TAB 3: HISTÓRICO DE CAIXA ---
+with tab3:
+    st.subheader("📜 Histórico Completo de Transações")
+    
+    if not df.empty:
+        df_filtro = df.dropna(subset=['Data']).copy()
+        df_filtro['Mês/Ano'] = df_filtro['Data'].dt.strftime('%m/%Y')
+        
+        meses_puros = df_filtro['Mês/Ano'].dropna().unique()
+        meses_disponiveis = sorted([str(m) for m in meses_puros if str(m).strip() and str(m) != 'nan'], reverse=True)
+        
+        opcoes_filtro = ["Ver Tudo"] + meses_disponiveis
+        mes_escolhido = st.selectbox("📅 Selecione o mês que deseja consultar:", opcoes_filtro, key="selectbox_filtro_mes_historico")
+        
+        if mes_escolhido != "Ver Tudo":
+            df_exibicao = df_filtro[df_filtro['Mês/Ano'] == mes_escolhido].copy()
+        else:
+            df_exibicao = df_filtro.copy()
+            
+        if not df_exibicao.empty:
+            df_exibicao = df_exibicao.sort_index(ascending=False)
+            
+            df_visualizacao = df_exibicao.copy()
+            df_visualizacao['Data'] = df_visualizacao['Data'].dt.strftime('%d/%m/%Y')
+            df_visualizacao = df_visualizacao.drop(columns=['Mês/Ano'])
+            
+            def colorir_linhas(row):
+                if row['Tipo'] == 'Entrada':
+                    return ['background-color: #d4edda; color: #155724; font-weight: bold'] * len(row)
+                elif row['Tipo'] == 'Saída':
+                    return ['background-color: #f8d7da; color: #721c24; font-weight: bold'] * len(row)
+                elif row['Tipo'] == 'Pendência':
+                    return ['background-color: #fff3cd; color: #856404; font-weight: bold'] * len(row)
+                return [''] * len(row)
+            
+            tabela_estilizada = df_visualizacao.style.apply(colorir_linhas, axis=1).format(
+                subset=["Valor"], 
+                formatter=lambda x: f"R$ {x:.2f}".replace('.', ',')
+            )
+            
+            st.dataframe(tabela_estilizada, use_container_width=True)
+        else:
+            st.info("Nenhum registro encontrado para este mês.")
+    else:
+        st.info("Nenhuma movimentação registrada até o momento.")
